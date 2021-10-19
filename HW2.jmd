@@ -7,7 +7,7 @@ w=rand(n)
 v=rand(n)
 x0=BitVector(zeros(n))
 f(x)=sum(-(x.*v))
-constraint(x,c1)=(sum(w.*x)<=c1)
+constraint(x)=(sum(w.*x)<=con)
 
 function uflip(recombinant::T) where {T <: BitVector}
     p = mutationRate
@@ -21,12 +21,12 @@ function uflip(recombinant::T) where {T <: BitVector}
     return recombinant
 end
 
-gafu = GA(populationSize=100,mutation=flip,crossover=uniform)
+gafu = GA(populationSize=100,mutation=flip,crossover=Evolutionary.uniform(r=0.5))
 gafs = GA(populationSize=100,mutation=flip,crossover=singlepoint)
-gaus = GA(populationSize=100,mutation=uflip,crossover=singlepoint)
-gauu = GA(populationSize=100,mutation=uflip,crossover=uniform)
+#gaus = GA(populationSize=100,mutation=uflip,crossover=singlepoint)
+#gauu = GA(populationSize=100,mutation=uflip,crossover=uniform)
 
-rfu = Evolutionary.optimize(f, x, gafu, Evolutionary.Options(iterations=10000))
-rfs = Evolutionary.optimize(f, x, gafs, Evolutionary.Options(iterations=10000))
-rus = Evolutionary.optimize(f, x, gaus, Evolutionary.Options(iterations=10000))
-ruu = Evolutionary.optimize(f, x, gauu, Evolutionary.Options(iterations=10000))
+rfu = Evolutionary.optimize(f, x0, constraint, gafu, Evolutionary.Options(iterations=10000))
+rfs = Evolutionary.optimize(f, x0, constraint gafs, Evolutionary.Options(iterations=10000))
+#rus = Evolutionary.optimize(f, x0, gaus, Evolutionary.Options(iterations=10000))
+#ruu = Evolutionary.optimize(f, x0, gauu, Evolutionary.Options(iterations=10000))
