@@ -1,17 +1,32 @@
 # To run this, you need to install Julia 1.6, and install the packages listed on the next line.
 # This can be done by pressing "]" and typing add *package name*, then backspace to return to
 # the julia REPL.
-using Evolutionary, CSV, DataFrames, Distributions, HypothesisTests, Printf, Plots
+using Evolutionary, CSV, DataFrames, Distributions, HypothesisTests, Printf, Plots, StatsPlots
 
-#Set Filename and Read CSV into DataFrame
-files=["knapPI_11_100_1000.csv","knapPI_13_200_1000.csv","knapPI_13_50_1000.csv","knapPI_14_50_1000.csv","knapPI_15_50_1000.csv","knapPI_16_50_1000.csv"]
-# Define function for part A.
+# Function to return the fitness and function calls from each of the 30 replicates for each of the 81 combinations.
+# Necessary in each of part a's functions, so I've defined it here.
+function stats(l)
+    temp=map(y->mapreduce(x->hcat(-minimum(x),Evolutionary.iterations(x),Evolutionary.f_calls(x)),vcat,l[y]),1:30)
+    fit=map(y->map(x->temp[x][y],1:30),1:81)
+    calls=map(y->map(x->temp[x][y],1:30),163:243)
+    return fit, calls
+end
+
+#Create bitvector of zeros to represent an empty solution. These are randomized in the population initialization.
+# This was the best performing initialization method, but the alternatives are still present in
+# the exploratory_heatmaps function.
+function x0(n)
+    return flip(BitVector(zeros(n)))
+end
+
+# Define functions for part A.
 function parta_exploratory_heatmaps(file)
     f_in(x)=SubString(x,8,length(x)-4)
     inst=f_in(file)
     data=CSV.read(file,DataFrame,skipto=6,header=false)
 
-    #Also read in constraint value con=open(file) do file
+    #Also read in constraint value
+    con=open(file) do file
         fileText= readlines(file)
         con=fileText[3][3:end]
         return parse(Int,con)
@@ -26,14 +41,13 @@ function parta_exploratory_heatmaps(file)
     #and the sum is set to negative as this EA uses minimization
     # This constraint handling technique was the best for
     f(x)=((sum(w.*x)<=con) ? -sum(v.*x) : (sum(w.*x)-con))
+
+    # Alternative constraint handling attempt.
     #f(x)=((sum(w.*x)<=con) ? -sum(v.*x) : 0)
 
-    #Create bitvector of zeros to represent an empty solution. These are randomized in the population initialization.
+    #Alternative initialization conditions
     #x0=flip(BitVector(zeros(n)))
-    #x0=BitVector(rand(Bool,n))
-    function x0(n)
-        return flip(BitVector(zeros(n)))
-    end
+    #x0=BitVector(rand(Bool,n)) function x0(n)
 
     #Defined uniform bit flipping function.
     #Flips a bit with probability 1/length(genome)
@@ -49,25 +63,6 @@ function parta_exploratory_heatmaps(file)
         return recombinant
     end
 
-    #Defined bit swapping function.
-    #Selects two arbitrary genes and swaps their values.
-    #Can experience "collisions" that don't change the
-    #gene's output (i.e. swapping a 1 with a 1 or 0 with 0).
-    function swap(recombinant::T) where {T <: BitVector}
-        s = length(recombinant)
-        p1=rand(1:s)
-        p2=rand(1:s)
-        while(p2==p1)
-            p2=rand(1:s)
-        end
-        t1=copy(recombinant[p1])
-        t2=copy(recombinant[p2])
-        recombinant[p1]=t2
-        recombinant[p2]=t1
-        return recombinant
-    end
-
-
     #Define different combinations of genetic algorithms with different types of mutation, and types of crossover
     #uniform and singlepoint.
     # Population size is pinned to 4*genome length, and mutation rate minimum/maximum are related to this value according to past work at purdue CITE.
@@ -78,25 +73,6 @@ function parta_exploratory_heatmaps(file)
     gafs=map(x->GA(populationSize=popsize,selection=roulette,mutation=flip,crossover=singlepoint,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
     gauu=map(x->GA(populationSize=popsize,selection=roulette,mutation=uflip,crossover=uniform,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
     gaus=map(x->GA(populationSize=popsize,selection=roulette,mutation=uflip,crossover=singlepoint,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
-    ##gaswu=map(x->GA(populationSize=1000,selection=roulette,mutation=swap,crossover=uniform,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
-    #gasws=map(x->GA(populationSize=1000,selection=roulette,mutation=swap,crossover=singlepoint,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
-
-    # Function to return the fitness and function calls from each of the 30 replicates for each of the 81 combinations.
-    function stats(l)
-        temp=map(y->mapreduce(x->hcat(-minimum(x),Evolutionary.iterations(x),Evolutionary.f_calls(x)),vcat,l[y]),1:30)
-        fit=map(y->map(x->temp[x][y],1:30),1:81)
-        calls=map(y->map(x->temp[x][y],1:30),163:243)
-        return fit, calls
-    end
-
-    # Check distribution difference with 98% Confidence Interval
-    #function ks_pairwise(data)
-    #    @suppress_err begin
-    #    temp=map(y->map(x->ApproximateTwoSampleKSTest(data[x],data[y]).δ,y+1:y+8),1:72)
-    #    #f(x)=(x<=0.02 ? x=1 : x=0)
-    #    return temp #reshape(f.(temp),9,:)'
-    #    end
-    #end
 
     #Run the optimization 30 times for each of the 81 combinations, collect distributions on fitness and calls, suppress output.
     rfu = [map(x->Evolutionary.optimize(f, x0(n), x, Evolutionary.Options(iterations=10000, successive_f_tol=10)),gafu) for _ in 1:30];
@@ -110,12 +86,6 @@ function parta_exploratory_heatmaps(file)
 
     rus = [map(x->Evolutionary.optimize(f, x0(n), x, Evolutionary.Options(iterations=10000, successive_f_tol=10)),gaus) for _ in 1:30];
     us_fitness, us_calls = stats(rus);
-
-    #rswu = map(x->Evolutionary.optimize(f, x0, x, Evolutionary.Options(iterations=10000)),gaswu);
-    #swus=hcat(points,-minimum.(rfs),Evolutionary.iterations.(rfs),Evolutionary.f_calls.(rfs))
-
-    #rsws = map(x->Evolutionary.optimize(f, x0, x, Evolutionary.Options(iterations=10000)),gasws);
-    #swss=hcat(points,-minimum.(rfs),Evolutionary.iterations.(rfs),Evolutionary.f_calls.(rfs))
 
     #Define X and Y values for heatmap plots, with X corresponding to Mutation Rate, and Y to Crossover Rate
     xs = [@sprintf("%.1E",i) for i = LinRange(1/(popsize*n),1/popsize,9)]
@@ -177,7 +147,6 @@ function parta_exploratory_heatmaps(file)
     savefig(m2,string("./figures/Maximum_calls_",inst))
     savefig(m3,string("./figures/Mode_calls_",inst))
     savefig(m4,string("./figures/Minimum_calls_",inst))
-
 end
 
 function parta_boxplots(file)
@@ -197,32 +166,88 @@ function parta_boxplots(file)
     w=data[:,3]
     v=data[:,2]
 
-    #Create objective function, which defaults to 0 if it violates the constraint,
-    #and the sum is set to negative as this EA uses minimization
-    # This constraint handling technique was the best for
+    #Best objective function and constraint method, penalty = how much we've violated the constraint.
     f(x)=((sum(w.*x)<=con) ? -sum(v.*x) : (sum(w.*x)-con))
-    #f(x)=((sum(w.*x)<=con) ? -sum(v.*x) : 0)
 
-    #Create bitvector of zeros to represent an empty solution. These are randomized in the population initialization.
-    #x0=flip(BitVector(zeros(n)))
-    #x0=BitVector(rand(Bool,n))
-    function x0(n)
-        return flip(BitVector(zeros(n)))
+    #Define different combinations of genetic algorithms with different types of mutation, and types of crossover
+    #uniform and singlepoint.
+    # Population size is pinned to 4*genome length, and mutation rate minimum/maximum are related to this value according to past work at purdue CITE.
+    # Crossover rates "average" tends to be 0.5, so we sampled from 0.1..0.9
+    popsize=4*n
+    points=mapreduce(y->map(x->(x,y),LinRange(1/(popsize*n),1/popsize,9)),vcat,0.1:0.1:0.9)
+    gafs=map(x->GA(populationSize=popsize,selection=roulette,mutation=flip,crossover=singlepoint,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
+
+    #Run the optimization 30 times for each of the 81 combinations, collect distributions on fitness and calls, suppress output.
+    rfs = [map(x->Evolutionary.optimize(f, x0(n), x, Evolutionary.Options(iterations=10000, successive_f_tol=10)),gafs) for _ in 1:30];
+    fs_fitness, fs_calls = stats(rfs);
+
+    #Define X and Y values for heatmap plots, with X corresponding to Mutation Rate, and Y to Crossover Rate
+    xs = [@sprintf("%.1E",i) for i = LinRange(1/(popsize*n),1/popsize,9)]
+    ys = [string("C", i) for i = 0.1:0.1:0.9]
+
+    # This and the following function allows easy plotting of the heatmaps, and manipulating the title values
+    ffmrm=reduce(hcat,map(x->reduce(vcat,fs_fitness[x:9:x+72]),1:9))
+    ffcrm=reduce(hcat,map(x->reduce(vcat,fs_fitness[x:x+8]),1:9:73))
+    fcmrm=reduce(hcat,map(x->reduce(vcat,fs_calls[x:9:x+72]),1:9))
+    fccrm=reduce(hcat,map(x->reduce(vcat,fs_calls[x:x+8]),1:9:73))
+
+    savefig(boxplot(permutedims(xs),ffmrm,leg=false, title="Box Plot of Fitness vs Mutation Rate"),string("./box_ss_flippedf_pen-con/Box_Fit_MR",inst))
+    savefig(boxplot(permutedims(ys),ffcrm,leg=false, title="Box Plot of Fitness vs Crossover Rate"),string("./box_ss_flippedf_pen-con/Box_Fit_CR",inst))
+    savefig(boxplot(permutedims(xs),fcmrm,leg=false, title="Box Plot of Function Calls vs Mutation Rate"),string("./box_ss_flippedf_pen-con/Box_Calls_MR",inst))
+    savefig(boxplot(permutedims(ys),fccrm,leg=false, title="Box Plot of Function Calls vs Crossover Rate"),string("./box_ss_flippedf_pen-con/Box_Calls_CR",inst))
+
+end
+
+function parta_KW_tests(file)
+    file=files[1];
+    f_in(x)=SubString(x,8,length(x)-4)
+    inst=f_in(file)
+    data=CSV.read(file,DataFrame,skipto=6,header=false)
+
+    #Also read in constraint value
+    con=open(file) do file
+        fileText= readlines(file)
+        con=fileText[3][3:end]
+        return parse(Int,con)
     end
 
-    #Defined uniform bit flipping function.
-    #Flips a bit with probability 1/length(genome)
-    function uflip(recombinant::T) where {T <: BitVector}
-        s = length(recombinant)
-        p = 1/s
-        check = rand(s).<p
-        for i in 1:length(check)
-            if check[i]==1
-            recombinant[i]=!recombinant[i]
-            end
-        end
-        return recombinant
-    end
+    #Create variables, knapsack options (n), weights (w), and values (v)
+    n=size(data)[1]
+    w=data[:,3]
+    v=data[:,2]
+
+    #Best constraint handling option: penalty based on how much we violate the constraint.
+    f(x)=((sum(w.*x)<=con) ? -sum(v.*x) : (sum(w.*x)-con))
+
+    #Define different combinations of genetic algorithms with different types of mutation, and types of crossover
+    #uniform and singlepoint.
+    # Population size is pinned to 4*genome length, and mutation rate minimum/maximum are related to this value according to past work at purdue CITE.
+    # Crossover rates "average" tends to be 0.5, so we sampled from 0.1..0.9
+    popsize=4*n
+    points=mapreduce(y->map(x->(x,y),LinRange(1/(popsize*n),1/popsize,9)),vcat,0.1:0.1:0.9)
+    gafs=map(x->GA(populationSize=popsize,selection=roulette,mutation=flip,crossover=singlepoint,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
+
+    #Run the optimization 30 times for each of the 81 combinations, collect distributions on fitness and calls, suppress output.
+    rfs = [map(x->Evolutionary.optimize(f, x0(n), x, Evolutionary.Options(iterations=10000, successive_f_tol=10)),gafs) for _ in 1:30];
+    fs_fitness, fs_calls = stats(rfs);
+
+    # This block lets is for hypothesis tests to see which distributions are changing with which parameters.
+    ffmrm=map(x->reduce(vcat,fs_fitness[x:9:x+72]),1:9)
+    ffcrm=map(x->reduce(vcat,fs_fitness[x:x+8]),1:9:73)
+    fcmrm=map(x->reduce(vcat,fs_calls[x:9:x+72]),1:9)
+    fccrm=map(x->reduce(vcat,fs_calls[x:x+8]),1:9:73)
+    map(x->pvalue(KruskalWallisTest(x ...)),[ffmrm,ffcrm,fcmrm,fccrm])
+end
+
+#Set Filename and Read CSV into DataFrame
+files=["knapPI_11_100_1000.csv","knapPI_13_200_1000.csv","knapPI_13_50_1000.csv","knapPI_14_50_1000.csv","knapPI_15_50_1000.csv","knapPI_16_50_1000.csv"]
+
+#Broadcast part a functions over files
+# parta_exploratory_heatmaps.(files)
+# parta_boxplots.(files)
+temp=parta_KW_tests.(files)
+
+function partc()
 
     #Defined bit swapping function.
     #Selects two arbitrary genes and swaps their values.
@@ -242,60 +267,13 @@ function parta_boxplots(file)
         return recombinant
     end
 
+    gaswu=map(x->GA(populationSize=1000,selection=roulette,mutation=swap,crossover=uniform,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
+    gasws=map(x->GA(populationSize=1000,selection=roulette,mutation=swap,crossover=singlepoint,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
 
-    #Define different combinations of genetic algorithms with different types of mutation, and types of crossover
-    #uniform and singlepoint.
-    # Population size is pinned to 4*genome length, and mutation rate minimum/maximum are related to this value according to past work at purdue CITE.
-    # Crossover rates "average" tends to be 0.5, so we sampled from 0.1..0.9
-    popsize=4*n
-    points=mapreduce(y->map(x->(x,y),LinRange(1/(popsize*n),1/popsize,9)),vcat,0.1:0.1:0.9)
-    gafs=map(x->GA(populationSize=popsize,selection=roulette,mutation=flip,crossover=singlepoint,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
+    rswu = [map(x->Evolutionary.optimize(f, x0(n), x, Evolutionary.Options(iterations=10000, successive_f_tol=10)),gaswu) for _ in 1:30];
+    swu_fitness, swu_calls = stats(rswu);
 
-    # Function to return the fitness and function calls from each of the 30 replicates for each of the 81 combinations.
-    function stats(l)
-        temp=map(y->mapreduce(x->hcat(-minimum(x),Evolutionary.iterations(x),Evolutionary.f_calls(x)),vcat,l[y]),1:30)
-        fit=map(y->map(x->temp[x][y],1:30),1:81)
-        calls=map(y->map(x->temp[x][y],1:30),163:243)
-        return fit, calls
-    end
-
-    # Check distribution difference with 98% Confidence Interval
-    #function ks_pairwise(data)
-    #    @suppress_err begin
-    #    temp=map(y->map(x->ApproximateTwoSampleKSTest(data[x],data[y]).δ,y+1:y+8),1:72)
-    #    #f(x)=(x<=0.02 ? x=1 : x=0)
-    #    return temp #reshape(f.(temp),9,:)'
-    #    end
-    #end
-
-    #Run the optimization 30 times for each of the 81 combinations, collect distributions on fitness and calls, suppress output.
-    rfs = [map(x->Evolutionary.optimize(f, x0(n), x, Evolutionary.Options(iterations=10000, successive_f_tol=10)),gafs) for _ in 1:30];
-    fs_fitness, fs_calls = stats(rfs);
-
-    ##gaswu=map(x->GA(populationSize=1000,selection=roulette,mutation=swap,crossover=uniform,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
-    #gasws=map(x->GA(populationSize=1000,selection=roulette,mutation=swap,crossover=singlepoint,mutationRate=x[1],crossoverRate=x[2],ɛ = 0.1),points);
-
-    #rswu = map(x->Evolutionary.optimize(f, x0, x, Evolutionary.Options(iterations=10000)),gaswu);
-    #swus=hcat(points,-minimum.(rfs),Evolutionary.iterations.(rfs),Evolutionary.f_calls.(rfs))
-
-    #rsws = map(x->Evolutionary.optimize(f, x0, x, Evolutionary.Options(iterations=10000)),gasws);
-    #swss=hcat(points,-minimum.(rfs),Evolutionary.iterations.(rfs),Evolutionary.f_calls.(rfs))
-
-    #Define X and Y values for heatmap plots, with X corresponding to Mutation Rate, and Y to Crossover Rate
-    xs = [@sprintf("%.1E",i) for i = LinRange(1/(popsize*n),1/popsize,9)]
-    ys = [string("C", i) for i = 0.1:0.1:0.9]
-
-    # This and the following function allows easy plotting of the heatmaps, and manipulating the title values
-    ffmrm=reduce(hcat,map(x->reduce(vcat,fs_fitness[x:9:x+72]),1:9))
-    ffcrm=reduce(hcat,map(x->reduce(vcat,fs_fitness[x:x+8]),1:9:73))
-    fcmrm=reduce(hcat,map(x->reduce(vcat,fs_calls[x:9:x+72]),1:9))
-    fccrm=reduce(hcat,map(x->reduce(vcat,fs_calls[x:x+8]),1:9:73))
-
-    savefig(boxplot(permutedims(xs),ffmrm,leg=false, title="Box Plot of Fitness vs Mutation Rate"),string("./box_ss_flippedf_pen-con/Box_Fit_MR",inst))
-    savefig(boxplot(permutedims(ys),ffcrm,leg=false, title="Box Plot of Fitness vs Crossover Rate"),string("./box_ss_flippedf_pen-con/Box_Fit_CR",inst))
-    savefig(boxplot(permutedims(xs),fcmrm,leg=false, title="Box Plot of Function Calls vs Mutation Rate"),string("./box_ss_flippedf_pen-con/Box_Calls_MR",inst))
-    savefig(boxplot(permutedims(ys),fccrm,leg=false, title="Box Plot of Function Calls vs Crossover Rate"),string("./box_ss_flippedf_pen-con/Box_Calls_CR",inst))
+    rsws = [map(x->Evolutionary.optimize(f, x0(n), x, Evolutionary.Options(iterations=10000, successive_f_tol=10)),gasws) for _ in 1:30];
+    sws_fitness, sws_calls = stats(rsws);
 
 end
-#Broadcast part a over files
-parta_boxplots.(files)
