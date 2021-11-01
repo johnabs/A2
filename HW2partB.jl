@@ -142,7 +142,11 @@ plotFiller = plot((1:3)',legend=true, framestyle=:none,label = ["GA (Best Part A
 plotC_E = (plotC,plotE,layout=(1,2), legend:outerbottom)
 plotB_D_F = plot(plotB,plotD,plotF,layout = (2,2))
 
+if(!isdir("partb"))
+	mkdir("partb")
+end
+
 #Saves resulting images as a png for later reference
-png(plotA,"GAvsRand_11_100")
-png(plotC_E,"GAvsRand_13_15")
-png(plotB_D_F,"GAvsRand_13_14_16")
+png(plotA,"./partb/GAvsRand_11_100")
+png(plotC_E,"./partb/GAvsRand_13_15")
+png(plotB_D_F,"./partb/GAvsRand_13_14_16")
